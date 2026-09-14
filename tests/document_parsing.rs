@@ -18,9 +18,14 @@ fn retains_science_and_removes_site_content() {
     assert!(markdown.contains("$$\nA(Q,K,V)=\\mathrm{softmax}(QK^T)V\n$$"));
     assert!(markdown.contains("| Method A | 28.4 |"));
     assert!(markdown.contains("| Method A | 29.1 |"));
-    assert!(markdown.contains("### Figure 1: Model architecture."));
+    assert!(markdown.contains("### Figure 1\n\nModel architecture."));
     assert!(markdown.contains("https://arxiv.org/html/2501.01234v2/figures/model.png"));
-    for unwanted in ["Site navigation", "Website footer", "Duplicate authors", "malicious_script"] {
+    for unwanted in [
+        "Site navigation",
+        "Website footer",
+        "Duplicate authors",
+        "malicious_script",
+    ] {
         assert!(!markdown.contains(unwanted));
     }
     assert_eq!(markdown.matches("# Structured Research").count(), 1);
@@ -46,16 +51,18 @@ fn selects_number_and_title_with_descendants() {
 fn rejects_ambiguous_missing_and_reversed_sections() {
     let document = document();
     for selector in ["att", "nonexistent", ""] {
-        assert!(document.select(&ReadArguments {
+        let selection = ReadArguments {
             section: Some(selector.to_owned()),
             ..ReadArguments::default()
-        }).is_err());
+        };
+        assert!(document.select(&selection).is_err());
     }
-    assert!(document.select(&ReadArguments {
+    let reversed = ReadArguments {
         from: Some("3".to_owned()),
         to: Some("2".to_owned()),
         ..ReadArguments::default()
-    }).is_err());
+    };
+    assert!(document.select(&reversed).is_err());
 }
 
 #[test]
@@ -75,7 +82,10 @@ fn filters_figures_and_references_without_removing_tables_or_appendix() {
 
 #[test]
 fn citation_identifiers_are_explicit_deduplicated_and_ordered() {
-    assert_eq!(document().reference_ids(), ["1607.06450", "hep-th/9901001v2"]);
+    assert_eq!(
+        document().reference_ids(),
+        ["1607.06450", "hep-th/9901001v2"]
+    );
 }
 
 #[test]
@@ -84,8 +94,16 @@ fn chunks_preserve_every_block_including_large_equations() {
     document.blocks[3].markdown = "α".repeat(13_000);
     let chunks = document.chunks();
     assert!(chunks.len() > 1);
-    let restored: Vec<_> = chunks.iter().flatten().map(|block| &block.markdown).collect();
-    let original: Vec<_> = document.blocks.iter().map(|block| &block.markdown).collect();
+    let restored: Vec<_> = chunks
+        .iter()
+        .flatten()
+        .map(|block| &block.markdown)
+        .collect();
+    let original: Vec<_> = document
+        .blocks
+        .iter()
+        .map(|block| &block.markdown)
+        .collect();
     assert_eq!(restored, original);
 }
 

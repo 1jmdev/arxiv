@@ -5,11 +5,11 @@ use regex::Regex;
 use scraper::{ElementRef, Html};
 
 use crate::document::{Block, BlockKind, Document, is_references};
+use crate::figures;
 use crate::metadata::{Metadata, element_text, normalize, selector};
 
-static MARKDOWN_LINK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\]\(([^)\s]+)\)").expect("valid Markdown link expression")
-});
+static MARKDOWN_LINK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\]\(([^)\s]+)\)").expect("valid Markdown link expression"));
 
 pub fn parse(html: &str, metadata: Metadata) -> Result<Document> {
     let document = Html::parse_document(html);
@@ -22,12 +22,16 @@ pub fn parse(html: &str, metadata: Metadata) -> Result<Document> {
     let origin = format!("https://arxiv.org/html/{}", metadata.identifier());
     let base_url = reqwest::Url::parse(&origin)?;
     for block in &mut blocks {
+        if let Some(figure) = &mut block.figure {
+            figure.resolve_urls(&base_url);
+            block.markdown = figure.markdown();
+            continue;
+        }
         block.markdown = MARKDOWN_LINK
             .replace_all(&block.markdown, |capture: &regex::Captures<'_>| {
-                base_url.join(&capture[1]).map_or_else(
-                    |_| capture[0].to_owned(),
-                    |url| format!("]({url})"),
-                )
+                base_url
+                    .join(&capture[1])
+                    .map_or_else(|_| capture[0].to_owned(), |url| format!("]({url})"))
             })
             .into_owned();
     }
@@ -77,6 +81,7 @@ fn excluded(element: ElementRef<'_>) -> bool {
         "ltx_note_mark",
         "ltx_ERROR",
         "ltx_tag_equation",
+        "ltx_tag_item",
     ]
     .iter()
     .any(|class| has_class(element, class))
@@ -88,17 +93,18 @@ fn collect(element: ElementRef<'_>, blocks: &mut Vec<Block>, in_references: bool
     }
     let name = element.value().name();
     let in_references = in_references || has_class(element, "ltx_bibliography");
-    if name.len() == 2 && name.starts_with('h') {
-        if let Ok(mut level) = name[1..].parse::<usize>() {
-            let text = normalize(&inline(element));
-            if has_class(element, "ltx_title_abstract") || text.eq_ignore_ascii_case("abstract") {
-                level = 2;
-            }
-            if !text.is_empty() {
-                blocks.push(Block::heading(level.clamp(2, 6), text));
-            }
-            return;
+    if name.len() == 2
+        && name.starts_with('h')
+        && let Ok(mut level) = name[1..].parse::<usize>()
+    {
+        let text = normalize(&inline(element));
+        if has_class(element, "ltx_title_abstract") || text.eq_ignore_ascii_case("abstract") {
+            level = 2;
         }
+        if !text.is_empty() {
+            blocks.push(Block::heading(level.clamp(2, 6), text));
+        }
+        return;
     }
     if has_class(element, "ltx_bibitem") || (in_references && name == "li") {
         let markdown = normalize(&inline(element));
@@ -127,6 +133,18 @@ fn collect(element: ElementRef<'_>, blocks: &mut Vec<Block>, in_references: bool
         }
     }
     if name == "figure" || has_class(element, "ltx_figure") || has_class(element, "ltx_table") {
+        if !has_class(element, "ltx_table") {
+            let number = blocks.iter().filter(|block| block.figure.is_some()).count() + 1;
+            let figure = figures::extract(element, number);
+            let mut block = Block::content(
+                BlockKind::Figure,
+                format!("{}: {}", figure.label, figure.caption),
+                figure.markdown(),
+            );
+            block.figure = Some(figure);
+            blocks.push(block);
+            return;
+        }
         let table_selector = selector("table");
         let tables: Vec<_> = element.select(&table_selector).collect();
         let kind = if tables.is_empty() {
@@ -145,14 +163,6 @@ fn collect(element: ElementRef<'_>, blocks: &mut Vec<Block>, in_references: bool
         }
         for table in tables {
             content.push(render_table(table));
-        }
-        if kind == BlockKind::Figure {
-            for image in element.select(&selector("img")) {
-                if let Some(source) = image.value().attr("src").and_then(safe_link) {
-                    let alternative = image.value().attr("alt").unwrap_or("Figure");
-                    content.push(format!("![{}]({source})", escape_label(alternative)));
-                }
-            }
         }
         if !content.is_empty() {
             blocks.push(Block::content(
@@ -208,7 +218,11 @@ fn collect(element: ElementRef<'_>, blocks: &mut Vec<Block>, in_references: bool
             } else {
                 BlockKind::Paragraph
             };
-            blocks.push(Block::content(kind, normalize(&plain_text(element)), markdown));
+            blocks.push(Block::content(
+                kind,
+                normalize(&plain_text(element)),
+                markdown,
+            ));
         }
         return;
     }
@@ -229,10 +243,6 @@ fn math_source(element: ElementRef<'_>) -> String {
                 .map(|annotation| annotation.text().collect())
         })
         .unwrap_or_else(|| element_text(element))
-}
-
-fn escape_label(value: &str) -> String {
-    value.replace('[', "\\[").replace(']', "\\]")
 }
 
 fn safe_link(value: &str) -> Option<String> {
@@ -272,7 +282,7 @@ fn plain_text(element: ElementRef<'_>) -> String {
     output
 }
 
-fn inline(element: ElementRef<'_>) -> String {
+pub(crate) fn inline(element: ElementRef<'_>) -> String {
     if excluded(element) {
         return String::new();
     }
@@ -299,10 +309,10 @@ fn inline(element: ElementRef<'_>) -> String {
         "em" | "i" => format!("*{}*", content.trim()),
         "code" => format!("`{content}`"),
         "a" => {
-            if let Some(link) = element.value().attr("href").and_then(safe_link) {
-                if !link.starts_with('#') {
-                    return format!("[{}]({link})", content.trim());
-                }
+            if let Some(link) = element.value().attr("href").and_then(safe_link)
+                && !link.starts_with('#')
+            {
+                return format!("[{}]({link})", content.trim());
             }
             content
         }

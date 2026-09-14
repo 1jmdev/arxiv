@@ -37,6 +37,20 @@ pub enum Command {
     Versions { id: String },
     /// Print the paper's section hierarchy.
     Toc { id: String },
+    /// List figure captions and their image or graph URLs.
+    Figures {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Cache a figure's panels and print paths; SVG graphs are rendered to PNG.
+    Figure {
+        id: String,
+        figure: String,
+        /// Keep original SVG files instead of rendering PNG copies.
+        #[arg(long)]
+        original: bool,
+    },
     /// Read a section by number or case-insensitive title.
     Section { id: String, section: String },
     /// Search arXiv web pages, without using the metadata API.

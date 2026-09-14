@@ -48,6 +48,17 @@ arxiv bibtex 1706.03762v7
 
 For long papers, list chunks with `read ID --chunks` and retrieve them with `read ID --chunk N`. Chunk numbers are one-based, and chunks target 12,000 characters while keeping blocks intact. Apply the same filters when listing and reading chunks. References and figures are included unless disabled with `--no-references` or `--no-figures`; tables remain when figures are disabled.
 
+## Images and graphs
+
+When a figure or graph matters to the analysis, inspect the actual images:
+
+```sh
+arxiv figures 2412.09282v2 --json
+arxiv figure 2412.09282v2 1
+```
+
+The second command prints one cached image path per panel. Open each path with your image-viewing tool. SVG diagrams are rendered to PNG by default; use `--original` to retrieve SVG files. Figure selectors accept an index, displayed label, or HTML ID. Paper Markdown also contains image URLs and panel labels. Keep each panel associated with its caption; do not infer graph trends from captions alone. If image viewing is unavailable, state that limitation. PDF fallback and inline SVG/data URLs do not currently provide figure assets.
+
 ## Original files and fidelity
 
 ```sh

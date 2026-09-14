@@ -6,6 +6,7 @@ use anyhow::{Result, ensure};
 use crate::arguments::{Arguments, Command, OutputFormat, ReadArguments};
 use crate::citation;
 use crate::document::describe_chunks;
+use crate::figures;
 use crate::metadata;
 use crate::paper;
 use crate::search;
@@ -50,6 +51,41 @@ pub fn execute(arguments: Arguments) -> Result<String> {
             let document = paper::load(&client, &id.parse()?)?;
             report_warnings(&document.warnings);
             Ok(document.toc())
+        }
+        Command::Figures { id, json } => {
+            let document = paper::load(&client, &id.parse()?)?;
+            report_warnings(&document.warnings);
+            let figures: Vec<_> = document
+                .blocks
+                .iter()
+                .filter_map(|block| block.figure.clone())
+                .collect();
+            if json {
+                json_output(&figures)
+            } else {
+                Ok(figures
+                    .iter()
+                    .map(|figure| format!("{}\n\n", figure.markdown()))
+                    .collect())
+            }
+        }
+        Command::Figure {
+            id,
+            figure,
+            original,
+        } => {
+            let document = paper::load(&client, &id.parse()?)?;
+            let figures: Vec<_> = document
+                .blocks
+                .iter()
+                .filter_map(|block| block.figure.clone())
+                .collect();
+            let selected = figures::select(&figures, &figure)?;
+            let paths = figures::download(&client, &document.metadata, selected, original)?;
+            Ok(paths
+                .iter()
+                .map(|path| format!("{}\n", path.display()))
+                .collect())
         }
         Command::References { id, ids } => {
             let document = paper::load(&client, &id.parse()?)?;

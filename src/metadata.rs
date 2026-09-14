@@ -88,7 +88,18 @@ pub fn load(client: &WebClient, identifier: &Identifier) -> Result<Metadata> {
         age,
         |bytes| parse(std::str::from_utf8(bytes)?, identifier).map(|_| ()),
     )?;
-    parse(&fs::read_to_string(path)?, identifier)
+    let html = fs::read_to_string(path)?;
+    let metadata = parse(&html, identifier)?;
+    if identifier.version.is_none() {
+        let pinned = client
+            .cache_dir
+            .join("metadata")
+            .join(format!("{}.html", metadata.identifier().cache_key()));
+        if !pinned.is_file() || client.refresh {
+            WebClient::write_atomic(&pinned, html.as_bytes())?;
+        }
+    }
+    Ok(metadata)
 }
 
 pub fn parse(html: &str, requested: &Identifier) -> Result<Metadata> {

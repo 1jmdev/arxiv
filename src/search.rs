@@ -133,10 +133,10 @@ pub fn parse(html: &str) -> Result<(Vec<SearchResult>, bool)> {
         for child in abstract_element.children() {
             if let Some(text) = child.value().as_text() {
                 abstract_text.push_str(text);
-            } else if let Some(element) = scraper::ElementRef::wrap(child) {
-                if element.value().name() != "a" || element.value().attr("onclick").is_none() {
-                    abstract_text.push_str(&element.text().collect::<String>());
-                }
+            } else if let Some(element) = scraper::ElementRef::wrap(child)
+                && (element.value().name() != "a" || element.value().attr("onclick").is_none())
+            {
+                abstract_text.push_str(&element.text().collect::<String>());
             }
         }
         results.push(SearchResult {

@@ -109,6 +109,22 @@ arxiv bibtex 1706.03762
 
 `references --ids` returns unique arXiv IDs explicitly present in bibliography text or links, in citation order. It does not guess missing identifiers or look them up elsewhere. `cite` produces a plain citation; `bibtex` generates an `@misc` entry from the abstract page, including the selected revision.
 
+## Images and graphs
+
+Paper reads include Markdown image links for raster images and SVG diagrams, including graphs embedded through HTML `<object>` elements. Multi-panel figures retain the main caption and each panel's label.
+
+```sh
+arxiv read 2412.09282v2
+arxiv figures 2412.09282v2
+arxiv figures 2412.09282v2 --json
+arxiv figure 2412.09282v2 1
+arxiv figure 2412.09282v2 "Figure 1" --original
+```
+
+`figures` lists captions and asset URLs. `figure` downloads every panel of the selected figure and prints one absolute local path per panel. SVG graphs are rendered to PNG for agent image viewers; `--original` returns the original SVG files. PNG, JPEG, GIF, and WebP assets retain their original format. Figure selectors accept the one-based figure index, displayed label, or HTML identifier such as `S1.F1`.
+
+For the first CRVQ figure, the default command returns three PNG paths. An agent can open those paths with its image-viewing tool to inspect the diagrams. The CLI preserves and renders images; it does not generate descriptions of graph trends or infer plotted values. Figure extraction requires paper HTML and externally linked image assets; it does not extract images from the PDF fallback or inline SVG/data URLs.
+
 ## Source, PDF, and HTML
 
 ```sh

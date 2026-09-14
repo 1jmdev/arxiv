@@ -2,6 +2,7 @@ pub mod arguments;
 pub mod citation;
 pub mod commands;
 pub mod document;
+pub mod figures;
 pub mod html_document;
 pub mod identifier;
 pub mod metadata;

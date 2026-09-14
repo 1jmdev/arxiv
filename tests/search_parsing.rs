@@ -6,22 +6,35 @@ use clap::Parser;
 fn parses_complete_abstracts_and_excludes_doi_tags() {
     let (results, next) = search::parse(include_str!("fixtures/search.html")).unwrap();
     assert!(next);
-    assert_eq!(results[0].abstract_text, "We evaluate structured documents.");
+    assert_eq!(
+        results[0].abstract_text,
+        "We evaluate structured documents."
+    );
     assert_eq!(results[0].categories, ["cs.AI"]);
     assert_eq!(results[0].authors, ["Alice Example", "Bob Researcher"]);
 }
 
 #[test]
 fn distinguishes_empty_results_from_access_challenges() {
-    assert!(search::parse("<p>Sorry, your query returned no results.</p>").unwrap().0.is_empty());
+    let (results, _) = search::parse("<p>Sorry, your query returned no results.</p>").unwrap();
+    assert!(results.is_empty());
     assert!(search::parse("<p>Please verify you are human.</p>").is_err());
 }
 
 #[test]
 fn encodes_filters_as_web_form_fields() {
     let arguments = Arguments::parse_from([
-        "arxiv", "search", "reasoning & evaluation", "--category", "cs.AI",
-        "--author", "Yann LeCun", "--since", "2025-01-01", "--limit", "20",
+        "arxiv",
+        "search",
+        "reasoning & evaluation",
+        "--category",
+        "cs.AI",
+        "--author",
+        "Yann LeCun",
+        "--since",
+        "2025-01-01",
+        "--limit",
+        "20",
     ]);
     let Command::Search(arguments) = arguments.command else {
         panic!("expected search arguments");

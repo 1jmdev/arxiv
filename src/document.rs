@@ -6,6 +6,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::arguments::ReadArguments;
+use crate::figures::Figure;
 use crate::metadata::Metadata;
 
 static SECTION_NUMBER: LazyLock<Regex> = LazyLock::new(|| {
@@ -36,6 +37,8 @@ pub struct Block {
     pub level: usize,
     pub text: String,
     pub markdown: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub figure: Option<Figure>,
 }
 
 impl Block {
@@ -45,6 +48,7 @@ impl Block {
             level,
             markdown: format!("{} {text}", "#".repeat(level)),
             text,
+            figure: None,
         }
     }
 
@@ -54,6 +58,7 @@ impl Block {
             level: 0,
             text,
             markdown,
+            figure: None,
         }
     }
 }
