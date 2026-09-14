@@ -2,6 +2,13 @@
 name = "arxiv"
 version = "0.1.0"
 edition = "2024"
+description = "Read arXiv research papers as structured Markdown for AI agents"
+repository = "https://github.com/1jmdev/arxiv"
+homepage = "https://github.com/1jmdev/arxiv"
+readme = "README.md"
+license = "MIT"
+keywords = ["arxiv", "research", "markdown", "cli", "agents"]
+categories = ["command-line-utilities", "science"]
 
 [dependencies]
 anyhow = "1.0.104"
