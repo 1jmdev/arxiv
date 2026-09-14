@@ -83,6 +83,7 @@ pub fn load(client: &WebClient, identifier: &Identifier) -> Result<Metadata> {
         &format!("https://arxiv.org/abs/{identifier}"),
         &relative,
         age,
+        |bytes| parse(std::str::from_utf8(bytes)?, identifier).map(|_| ()),
     )?;
     parse(&fs::read_to_string(path)?, identifier)
 }

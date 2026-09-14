@@ -1,5 +1,5 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -29,22 +29,34 @@ impl WebClient {
             .context("cannot locate cache directory; set --cache-dir")?;
         fs::create_dir_all(&cache_dir)?;
         let client = Client::builder()
-            .user_agent(concat!("arxiv-cli/", env!("CARGO_PKG_VERSION"), " (+https://github.com/1jmdev/arxiv)"))
+            .user_agent(concat!(
+                "arxiv-cli/",
+                env!("CARGO_PKG_VERSION"),
+                " (+https://github.com/1jmdev/arxiv)"
+            ))
             .timeout(Duration::from_secs(60))
             .connect_timeout(Duration::from_secs(15))
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
                 if attempt.previous().len() >= 5 {
                     attempt.error("too many redirects")
-                } else if attempt.url().host_str().is_some_and(|host| {
-                    host == "arxiv.org" || host.ends_with(".arxiv.org")
-                }) {
+                } else if attempt.url().scheme() == "https"
+                    && attempt
+                        .url()
+                        .host_str()
+                        .is_some_and(|host| host == "arxiv.org" || host.ends_with(".arxiv.org"))
+                {
                     attempt.follow()
                 } else {
-                    attempt.error("refusing redirect outside arxiv.org")
+                    attempt.error("refusing redirect outside HTTPS arxiv.org")
                 }
             }))
             .build()?;
-        Ok(Self { client, cache_dir, refresh, offline })
+        Ok(Self {
+            client,
+            cache_dir,
+            refresh,
+            offline,
+        })
     }
 
     pub fn resource(
@@ -52,6 +64,7 @@ impl WebClient {
         url: &str,
         relative_path: &Path,
         maximum_age: Option<Duration>,
+        validate: impl Fn(&[u8]) -> Result<()>,
     ) -> Result<PathBuf> {
         let path = self.cache_dir.join(relative_path);
         if path.is_file() && !self.refresh {
@@ -63,11 +76,14 @@ impl WebClient {
                     .is_some_and(|elapsed| elapsed < age)
             });
             if fresh || self.offline {
+                validate(&fs::read(&path)?)
+                    .context("cached resource is invalid; run again with --refresh")?;
                 return Ok(path);
             }
         }
         ensure!(!self.offline, "resource is not cached: {url}");
         let bytes = self.fetch(url)?;
+        validate(&bytes)?;
         Self::write_atomic(&path, &bytes)?;
         Ok(path)
     }
@@ -81,30 +97,47 @@ impl WebClient {
         );
         for attempt in 0..3 {
             let request_lock = self.acquire_request_lock()?;
-            let response = self.client.get(url).send().with_context(|| format!("fetching {url}"))?;
+            let response = self
+                .client
+                .get(url)
+                .send()
+                .with_context(|| format!("fetching {url}"))?;
             let status = response.status();
             if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
                 let delay = response
                     .headers()
                     .get(reqwest::header::RETRY_AFTER)
                     .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<u64>().ok())
+                    .and_then(retry_delay)
                     .unwrap_or(3 * (attempt + 1));
                 drop(response);
                 drop(request_lock);
-                ensure!(attempt < 2, "arXiv returned {status} for {url}; try again later");
-                ensure!(delay <= 60, "arXiv requests a {delay}-second delay; try again later");
+                ensure!(
+                    attempt < 2,
+                    "arXiv returned {status} for {url}; try again later"
+                );
+                ensure!(
+                    delay <= 60,
+                    "arXiv requests a {delay}-second delay; try again later"
+                );
                 thread::sleep(Duration::from_secs(delay));
                 continue;
             }
             ensure!(status.is_success(), "arXiv returned {status} for {url}");
             ensure!(
-                response.content_length().is_none_or(|size| size <= MAX_DOWNLOAD_BYTES),
+                response
+                    .content_length()
+                    .is_none_or(|size| size <= MAX_DOWNLOAD_BYTES),
                 "download exceeds the 100 MiB limit"
             );
             let mut bytes = Vec::new();
-            response.take(MAX_DOWNLOAD_BYTES + 1).read_to_end(&mut bytes)?;
-            ensure!(bytes.len() as u64 <= MAX_DOWNLOAD_BYTES, "download exceeds the 100 MiB limit");
+            response
+                .take(MAX_DOWNLOAD_BYTES + 1)
+                .read_to_end(&mut bytes)?;
+            ensure!(
+                bytes.len() as u64 <= MAX_DOWNLOAD_BYTES,
+                "download exceeds the 100 MiB limit"
+            );
             drop(request_lock);
             return Ok(bytes);
         }
@@ -129,9 +162,12 @@ impl WebClient {
             }
         }
         file.set_len(0)?;
-        use std::io::{Seek, SeekFrom};
         file.seek(SeekFrom::Start(0))?;
-        write!(file, "{}", SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+        write!(
+            file,
+            "{}",
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis()
+        )?;
         file.flush()?;
         Ok(file)
     }
@@ -141,7 +177,17 @@ impl WebClient {
         fs::create_dir_all(parent)?;
         let mut temporary = NamedTempFile::new_in(parent)?;
         temporary.write_all(bytes)?;
-        temporary.persist(path).with_context(|| format!("writing {}", path.display()))?;
+        temporary
+            .persist(path)
+            .with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
+}
+
+fn retry_delay(value: &str) -> Option<u64> {
+    value.parse().ok().or_else(|| {
+        chrono::DateTime::parse_from_rfc2822(value)
+            .ok()
+            .map(|date| (date.timestamp() - chrono::Utc::now().timestamp()).max(0) as u64)
+    })
 }

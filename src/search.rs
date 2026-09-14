@@ -74,7 +74,12 @@ pub fn execute(client: &WebClient, arguments: &SearchArguments) -> Result<Vec<Se
         let mut hash = DefaultHasher::new();
         url.as_str().hash(&mut hash);
         let relative = Path::new("search").join(format!("{:016x}.html", hash.finish()));
-        let path = client.resource(url.as_str(), &relative, Some(Duration::from_secs(3600)))?;
+        let path = client.resource(
+            url.as_str(),
+            &relative,
+            Some(Duration::from_secs(3600)),
+            |bytes| parse(std::str::from_utf8(bytes)?).map(|_| ()),
+        )?;
         let html = std::fs::read_to_string(path)?;
         let (page, next) = parse(&html)?;
         let count = page.len();

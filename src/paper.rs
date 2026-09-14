@@ -18,30 +18,30 @@ pub fn download(client: &WebClient, metadata: &Metadata, format: &str) -> Result
         _ => unreachable!("internal download format"),
     };
     let relative = Path::new(&identifier.cache_key()).join(filename);
-    let path = client.resource(
+    client.resource(
         &format!("https://arxiv.org/{endpoint}/{identifier}"),
         &relative,
         None,
-    )?;
-    let bytes = fs::read(&path)?;
-    let validation = match format {
-        "pdf" => ensure!(bytes.starts_with(b"%PDF-"), "arXiv did not return a PDF"),
-        "html" => {
-            let html = String::from_utf8(bytes)?;
-            html_document::parse(&html, metadata.clone())?;
-        }
-        "source" => {
-            let prefix = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]).to_lowercase();
-            ensure!(
-                !prefix.trim_start().starts_with("<!doctype html")
-                    && !prefix.trim_start().starts_with("<html"),
-                "arXiv returned a web page instead of source"
-            );
-        }
-        _ => unreachable!(),
-    };
-    let _ = validation;
-    Ok(path)
+        |bytes| {
+            ensure!(!bytes.is_empty(), "arXiv returned an empty resource");
+            match format {
+                "pdf" => ensure!(bytes.starts_with(b"%PDF-"), "arXiv did not return a PDF"),
+                "html" => {
+                    html_document::parse(std::str::from_utf8(bytes)?, metadata.clone())?;
+                }
+                "source" => {
+                    let prefix = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]);
+                    let prefix = prefix.trim_start().to_lowercase();
+                    ensure!(
+                        !prefix.starts_with("<!doctype html") && !prefix.starts_with("<html"),
+                        "arXiv returned a web page instead of source"
+                    );
+                }
+                _ => unreachable!(),
+            }
+            Ok(())
+        },
+    )
 }
 
 pub fn load(client: &WebClient, identifier: &crate::identifier::Identifier) -> Result<Document> {

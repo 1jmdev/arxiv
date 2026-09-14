@@ -1,8 +1,14 @@
 use anyhow::{Context, Result, ensure};
+use regex::Regex;
 use scraper::{ElementRef, Html};
+use std::sync::LazyLock;
 
 use crate::document::{Block, BlockKind, Document, is_references};
 use crate::metadata::{Metadata, element_text, normalize, selector};
+
+static MARKDOWN_LINK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\]\(([^)\s]+)\)").expect("valid Markdown link expression")
+});
 
 pub fn parse(html: &str, metadata: Metadata) -> Result<Document> {
     let document = Html::parse_document(html);
@@ -12,6 +18,18 @@ pub fn parse(html: &str, metadata: Metadata) -> Result<Document> {
         .context("HTML does not contain a research paper article")?;
     let mut blocks = Vec::new();
     collect(root, &mut blocks, false);
+    let origin = format!("https://arxiv.org/html/{}", metadata.identifier());
+    let base_url = reqwest::Url::parse(&origin)?;
+    for block in &mut blocks {
+        block.markdown = MARKDOWN_LINK
+            .replace_all(&block.markdown, |capture: &regex::Captures<'_>| {
+                base_url.join(&capture[1]).map_or_else(
+                    |_| capture[0].to_owned(),
+                    |url| format!("]({url})"),
+                )
+            })
+            .into_owned();
+    }
     ensure!(
         blocks.iter().any(|block| block.kind == BlockKind::Paragraph),
         "HTML article contains no readable paragraphs"
@@ -30,7 +48,7 @@ pub fn parse(html: &str, metadata: Metadata) -> Result<Document> {
         blocks.insert(0, Block::heading(2, "Abstract".to_owned()));
     }
     Ok(Document {
-        origin: format!("https://arxiv.org/html/{}", metadata.identifier()),
+        origin,
         metadata,
         warnings: Vec::new(),
         blocks,
@@ -205,12 +223,33 @@ fn escape_label(value: &str) -> String {
 fn safe_link(value: &str) -> Option<String> {
     if value.starts_with("https://") || value.starts_with("http://") || value.starts_with('#') {
         Some(value.replace(' ', "%20").replace('(', "%28").replace(')', "%29"))
-    } else if value.starts_with("javascript:") || value.starts_with("data:") {
+    } else if value.contains(':') || value.chars().any(char::is_control) {
         None
     } else {
         // Relative image paths are resolved against the paper URL after parsing.
         Some(value.to_owned())
     }
+}
+
+fn plain_text(element: ElementRef<'_>) -> String {
+    if excluded(element) {
+        return String::new();
+    }
+    if element.value().name() == "math" {
+        return math_source(element);
+    }
+    let mut output = String::new();
+    for child in element.children() {
+        if let Some(text) = child.value().as_text() {
+            output.push_str(text);
+        } else if let Some(child) = ElementRef::wrap(child) {
+            output.push_str(&plain_text(child));
+            if matches!(child.value().name(), "div" | "p" | "td" | "th" | "br") {
+                output.push(' ');
+            }
+        }
+    }
+    output
 }
 
 fn inline(element: ElementRef<'_>) -> String {
