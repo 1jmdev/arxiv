@@ -82,7 +82,11 @@ fn flush_paragraph(paragraph: &mut String, blocks: &mut Vec<Block>, references: 
     if !paragraph.is_empty() {
         let text = std::mem::take(paragraph);
         blocks.push(Block::content(
-            if references { BlockKind::Reference } else { BlockKind::Paragraph },
+            if references {
+                BlockKind::Reference
+            } else {
+                BlockKind::Paragraph
+            },
             text.clone(),
             text,
         ));

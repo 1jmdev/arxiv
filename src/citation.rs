@@ -30,10 +30,20 @@ fn escape(value: &str) -> String {
 }
 
 pub fn bibtex(metadata: &Metadata) -> String {
-    let key = format!("arxiv{}{}", metadata.id.replace(['/', '.'], ""), metadata.version);
+    let key = format!(
+        "arxiv{}{}",
+        metadata.id.replace(['/', '.'], ""),
+        metadata.version
+    );
+    let authors = metadata
+        .authors
+        .iter()
+        .map(|author| escape(author))
+        .collect::<Vec<_>>()
+        .join(" and ");
     let mut fields = vec![
         ("title", format!("{{{}}}", escape(&metadata.title))),
-        ("author", metadata.authors.iter().map(|author| escape(author)).collect::<Vec<_>>().join(" and ")),
+        ("author", authors),
         ("year", metadata.submitted[..4].to_owned()),
         ("eprint", format!("{}{}", metadata.id, metadata.version)),
         ("archivePrefix", "arXiv".to_owned()),
@@ -45,8 +55,10 @@ pub fn bibtex(metadata: &Metadata) -> String {
     if let Some(doi) = &metadata.doi {
         fields.push(("doi", escape(doi)));
     }
-    let fields = fields.iter().map(|(name, value)| {
-        format!("  {name} = {{{value}}}")
-    }).collect::<Vec<_>>().join(",\n");
+    let fields = fields
+        .iter()
+        .map(|(name, value)| format!("  {name} = {{{value}}}"))
+        .collect::<Vec<_>>()
+        .join(",\n");
     format!("@misc{{{key},\n{fields}\n}}\n")
 }

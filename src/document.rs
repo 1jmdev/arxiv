@@ -190,7 +190,9 @@ impl Document {
             });
         }
         if arguments.no_figures {
-            document.blocks.retain(|block| block.kind != BlockKind::Figure);
+            document
+                .blocks
+                .retain(|block| block.kind != BlockKind::Figure);
         }
         Ok(document)
     }
@@ -254,5 +256,8 @@ pub fn describe_chunks(chunks: &[Vec<Block>]) -> Vec<ChunkDescription> {
 
 pub fn is_references(title: &str) -> bool {
     let title = SECTION_NUMBER.replace(title, "").to_lowercase();
-    matches!(title.trim(), "references" | "bibliography" | "literature cited")
+    matches!(
+        title.trim(),
+        "references" | "bibliography" | "literature cited"
+    )
 }

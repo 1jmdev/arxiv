@@ -43,13 +43,16 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<SourceFile>> {
             );
             "source.tex"
         };
-        return Ok(vec![SourceFile { name: name.to_owned(), contents: expanded }]);
+        return Ok(vec![SourceFile {
+            name: name.to_owned(),
+            contents: expanded,
+        }]);
     }
     let mut archive = tar::Archive::new(Cursor::new(expanded));
     let mut files = Vec::new();
     let mut total = 0;
     for entry in archive.entries()? {
-        let mut entry = entry?;
+        let entry = entry?;
         if !entry.header().entry_type().is_file() {
             continue;
         }
@@ -57,9 +60,14 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<SourceFile>> {
         let path = entry.path()?;
         let name = safe_name(&path)?;
         total += entry.size();
-        ensure!(total <= MAX_EXPANDED_BYTES, "source files exceed the 200 MiB limit");
+        ensure!(
+            total <= MAX_EXPANDED_BYTES,
+            "source files exceed the 200 MiB limit"
+        );
         let mut contents = Vec::new();
-        entry.take(MAX_EXPANDED_BYTES + 1).read_to_end(&mut contents)?;
+        entry
+            .take(MAX_EXPANDED_BYTES + 1)
+            .read_to_end(&mut contents)?;
         files.push(SourceFile { name, contents });
     }
     files.sort_by(|left, right| left.name.cmp(&right.name));
@@ -98,7 +106,13 @@ fn is_tar(bytes: &[u8]) -> bool {
     let actual: u64 = bytes[..512]
         .iter()
         .enumerate()
-        .map(|(index, byte)| if (148..156).contains(&index) { 32 } else { u64::from(*byte) })
+        .map(|(index, byte)| {
+            if (148..156).contains(&index) {
+                32
+            } else {
+                u64::from(*byte)
+            }
+        })
         .sum();
     expected == actual
 }
@@ -106,7 +120,10 @@ fn is_tar(bytes: &[u8]) -> bool {
 pub fn file_text(files: &[SourceFile], requested: &str) -> Result<String> {
     let requested = safe_name(Path::new(requested))?;
     let matches: Vec<_> = files.iter().filter(|file| file.name == requested).collect();
-    ensure!(matches.len() <= 1, "archive contains duplicate entries for {requested}");
+    ensure!(
+        matches.len() <= 1,
+        "archive contains duplicate entries for {requested}"
+    );
     let file = matches.first().with_context(|| {
         format!("source file {requested:?} not found; use `arxiv source <ID> --files`")
     })?;
@@ -128,7 +145,10 @@ mod tests {
         encoder.write_all(b"\\documentclass{article}").unwrap();
         let files = parse(&encoder.finish().unwrap()).unwrap();
         assert_eq!(files[0].name, "source.tex");
-        assert_eq!(file_text(&files, "source.tex").unwrap(), "\\documentclass{article}");
+        assert_eq!(
+            file_text(&files, "source.tex").unwrap(),
+            "\\documentclass{article}"
+        );
     }
 
     #[test]

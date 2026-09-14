@@ -43,18 +43,27 @@ impl FromStr for Identifier {
         }
         let value = value.trim_end_matches('/').trim_end_matches(".pdf");
         let Some(captures) = IDENTIFIER.captures(value) else {
-            bail!("invalid arXiv identifier: {value:?}; expected 1706.03762 or hep-th/9901001, optionally followed by vN");
+            bail!(
+                "invalid arXiv identifier: {value:?}; expected 1706.03762 or hep-th/9901001, optionally followed by vN"
+            );
         };
         Ok(Self {
             base: captures["base"].to_owned(),
-            version: captures.name("version").map(|version| version.as_str().to_owned()),
+            version: captures
+                .name("version")
+                .map(|version| version.as_str().to_owned()),
         })
     }
 }
 
 impl fmt::Display for Identifier {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}{}", self.base, self.version.as_deref().unwrap_or(""))
+        write!(
+            formatter,
+            "{}{}",
+            self.base,
+            self.version.as_deref().unwrap_or("")
+        )
     }
 }
 

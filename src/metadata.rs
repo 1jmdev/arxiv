@@ -78,7 +78,10 @@ pub fn element_text(element: ElementRef<'_>) -> String {
 
 pub fn load(client: &WebClient, identifier: &Identifier) -> Result<Metadata> {
     let relative = Path::new("metadata").join(format!("{}.html", identifier.cache_key()));
-    let age = identifier.version.is_none().then_some(Duration::from_secs(3600));
+    let age = identifier
+        .version
+        .is_none()
+        .then_some(Duration::from_secs(3600));
     let path = client.resource(
         &format!("https://arxiv.org/abs/{identifier}"),
         &relative,
@@ -100,7 +103,10 @@ pub fn parse(html: &str, requested: &Identifier) -> Result<Metadata> {
     let page_id: Identifier = meta("citation_arxiv_id")
         .context("page does not contain arXiv citation metadata")?
         .parse()?;
-    ensure!(page_id.base == requested.base, "arXiv returned a different paper");
+    ensure!(
+        page_id.base == requested.base,
+        "arXiv returned a different paper"
+    );
     let title = meta("citation_title").context("paper title is missing")?;
     let history = document
         .select(&selector(".submission-history"))

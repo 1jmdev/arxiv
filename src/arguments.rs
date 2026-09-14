@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
-#[command(version, about = "Read arXiv papers as structured Markdown for research agents")]
+#[command(
+    version,
+    about = "Read arXiv papers as structured Markdown for research agents"
+)]
 pub struct Arguments {
     /// Override the cache directory (also configurable with ARXIV_CACHE_DIR).
     #[arg(long, global = true)]

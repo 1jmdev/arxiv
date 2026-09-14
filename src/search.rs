@@ -23,7 +23,10 @@ pub struct SearchResult {
 }
 
 pub fn search_url(arguments: &SearchArguments, start: usize) -> Result<reqwest::Url> {
-    ensure!(!arguments.query.trim().is_empty(), "search query must not be empty");
+    ensure!(
+        !arguments.query.trim().is_empty(),
+        "search query must not be empty"
+    );
     let mut url = reqwest::Url::parse("https://arxiv.org/search/advanced")?;
     {
         let mut parameters = url.query_pairs_mut();
@@ -141,12 +144,19 @@ pub fn parse(html: &str) -> Result<(Vec<SearchResult>, bool)> {
             title,
             authors,
             abstract_text: normalize(&abstract_text),
-            categories: result.select(&selector(".tags .tag")).map(element_text).collect(),
+            categories: result
+                .select(&selector(".tags .tag[data-tooltip]"))
+                .map(element_text)
+                .collect(),
             url: format!("https://arxiv.org/abs/{}", identifier.base),
         });
     }
     if results.is_empty() {
-        let body = document.root_element().text().collect::<String>().to_lowercase();
+        let body = document
+            .root_element()
+            .text()
+            .collect::<String>()
+            .to_lowercase();
         ensure!(
             body.contains("no results") || body.contains("sorry, your query"),
             "arXiv returned an unrecognized search page; it may be a challenge or a changed layout"
@@ -154,6 +164,11 @@ pub fn parse(html: &str) -> Result<(Vec<SearchResult>, bool)> {
     }
     let next = document
         .select(&selector("a.pagination-next[href]"))
-        .any(|element| !element.value().classes().any(|class| class == "is-invisible"));
+        .any(|element| {
+            !element
+                .value()
+                .classes()
+                .any(|class| class == "is-invisible")
+        });
     Ok((results, next))
 }
