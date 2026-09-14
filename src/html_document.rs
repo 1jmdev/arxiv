@@ -1,7 +1,8 @@
+use std::sync::LazyLock;
+
 use anyhow::{Context, Result, ensure};
 use regex::Regex;
 use scraper::{ElementRef, Html};
-use std::sync::LazyLock;
 
 use crate::document::{Block, BlockKind, Document, is_references};
 use crate::metadata::{Metadata, element_text, normalize, selector};
@@ -31,7 +32,9 @@ pub fn parse(html: &str, metadata: Metadata) -> Result<Document> {
             .into_owned();
     }
     ensure!(
-        blocks.iter().any(|block| block.kind == BlockKind::Paragraph),
+        blocks
+            .iter()
+            .any(|block| block.kind == BlockKind::Paragraph),
         "HTML article contains no readable paragraphs"
     );
     if !blocks.iter().any(|block| {
@@ -99,7 +102,11 @@ fn collect(element: ElementRef<'_>, blocks: &mut Vec<Block>, in_references: bool
     }
     if has_class(element, "ltx_bibitem") || (in_references && name == "li") {
         let markdown = normalize(&inline(element));
-        blocks.push(Block::content(BlockKind::Reference, element_text(element), markdown));
+        blocks.push(Block::content(
+            BlockKind::Reference,
+            normalize(&plain_text(element)),
+            markdown,
+        ));
         return;
     }
     if has_class(element, "ltx_equation") || has_class(element, "ltx_equationgroup") {
@@ -122,7 +129,11 @@ fn collect(element: ElementRef<'_>, blocks: &mut Vec<Block>, in_references: bool
     if name == "figure" || has_class(element, "ltx_figure") || has_class(element, "ltx_table") {
         let table_selector = selector("table");
         let tables: Vec<_> = element.select(&table_selector).collect();
-        let kind = if tables.is_empty() { BlockKind::Figure } else { BlockKind::Table };
+        let kind = if tables.is_empty() {
+            BlockKind::Figure
+        } else {
+            BlockKind::Table
+        };
         let caption = element
             .select(&selector("figcaption, .ltx_caption"))
             .map(|caption| normalize(&inline(caption)))
@@ -144,14 +155,18 @@ fn collect(element: ElementRef<'_>, blocks: &mut Vec<Block>, in_references: bool
             }
         }
         if !content.is_empty() {
-            blocks.push(Block::content(kind, element_text(element), content.join("\n\n")));
+            blocks.push(Block::content(
+                kind,
+                normalize(&plain_text(element)),
+                content.join("\n\n"),
+            ));
         }
         return;
     }
     if name == "table" {
         blocks.push(Block::content(
             BlockKind::Table,
-            element_text(element),
+            normalize(&plain_text(element)),
             render_table(element),
         ));
         return;
@@ -193,7 +208,7 @@ fn collect(element: ElementRef<'_>, blocks: &mut Vec<Block>, in_references: bool
             } else {
                 BlockKind::Paragraph
             };
-            blocks.push(Block::content(kind, element_text(element), markdown));
+            blocks.push(Block::content(kind, normalize(&plain_text(element)), markdown));
         }
         return;
     }
@@ -222,7 +237,12 @@ fn escape_label(value: &str) -> String {
 
 fn safe_link(value: &str) -> Option<String> {
     if value.starts_with("https://") || value.starts_with("http://") || value.starts_with('#') {
-        Some(value.replace(' ', "%20").replace('(', "%28").replace(')', "%29"))
+        Some(
+            value
+                .replace(' ', "%20")
+                .replace('(', "%28")
+                .replace(')', "%29"),
+        )
     } else if value.contains(':') || value.chars().any(char::is_control) {
         None
     } else {
@@ -297,15 +317,20 @@ fn render_table(table: ElementRef<'_>) -> String {
             grid.push(Vec::new());
         }
         let mut column = 0;
-        for cell in row.children().filter_map(ElementRef::wrap).filter(|cell| {
-            matches!(cell.value().name(), "td" | "th")
-        }) {
+        for cell in row
+            .children()
+            .filter_map(ElementRef::wrap)
+            .filter(|cell| matches!(cell.value().name(), "td" | "th"))
+        {
             while grid[row_index].get(column).is_some_and(Option::is_some) {
                 column += 1;
             }
             let span = |attribute: &str| {
-                cell.value().attr(attribute).and_then(|value| value.parse::<usize>().ok())
-                    .unwrap_or(1).clamp(1, 128)
+                cell.value()
+                    .attr(attribute)
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(1)
+                    .clamp(1, 128)
             };
             let width = span("colspan");
             let height = span("rowspan");
@@ -329,9 +354,9 @@ fn render_table(table: ElementRef<'_>) -> String {
     }
     let mut output = Vec::new();
     for (index, row) in grid.iter().enumerate() {
-        let cells: Vec<_> = (0..width).map(|column| {
-            row.get(column).and_then(Option::as_deref).unwrap_or("")
-        }).collect();
+        let cells: Vec<_> = (0..width)
+            .map(|column| row.get(column).and_then(Option::as_deref).unwrap_or(""))
+            .collect();
         output.push(format!("| {} |", cells.join(" | ")));
         if index == 0 {
             output.push(format!("| {} |", vec!["---"; width].join(" | ")));
